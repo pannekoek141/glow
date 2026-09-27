@@ -161,7 +161,8 @@ This fork adds Obsidian-style inline editing to the TUI.
 - Arrow keys at a block's edge move to the next block. Backspace at the start
   of a block joins it with the one above.
 
-On the file list, press `n` for a new file (folders are created for you) and
+On the file list, scroll to move through files, press `n` for a new file
+(folders are created for you) and
 `backspace` to move the selected file to the Trash.
 
 Also new: tables get a full box border, and `style: auto` follows the

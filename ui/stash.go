@@ -460,6 +460,14 @@ func (m *stashModel) handleDocumentBrowsing(msg tea.Msg) tea.Cmd {
 	numDocs := len(m.getVisibleMarkdowns())
 
 	switch msg := msg.(type) {
+	case tea.MouseWheelMsg:
+		switch msg.Button {
+		case tea.MouseWheelUp:
+			m.moveCursorUp()
+		case tea.MouseWheelDown:
+			m.moveCursorDown()
+		}
+
 	// Handle keys
 	case tea.KeyPressMsg:
 		switch msg.String() {
