@@ -364,8 +364,17 @@ func glamourRender(m pagerModel, markdown string) (string, error) {
 		width = 0
 	}
 
+	// Follow the terminal's light/dark mode instead of assuming dark.
+	style := m.common.cfg.GlamourStyle
+	if style == "auto" {
+		style = "light"
+		if m.common.isDark {
+			style = "dark"
+		}
+	}
+
 	options := []glamour.TermRendererOption{
-		utils.GlamourStyle(m.common.cfg.GlamourStyle, isCode),
+		utils.GlamourStyle(style, isCode),
 		glamour.WithWordWrap(width),
 	}
 
