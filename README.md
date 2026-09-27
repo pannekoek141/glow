@@ -158,6 +158,8 @@ This fork adds Obsidian-style inline editing to the TUI.
 - Undo and redo with `cmd+z` / `cmd+shift+z` (or `ctrl+z` / `ctrl+y`).
   In Ghostty, add `keybind = super+z=unbind` and
   `keybind = super+shift+z=unbind` to your config so the keys reach Glow.
+- Enter on a list item or to-do starts the next one; enter on an empty item
+  ends the list.
 - Arrow keys at a block's edge move to the next block. Backspace at the start
   of a block joins it with the one above.
 

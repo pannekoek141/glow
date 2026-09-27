@@ -5,6 +5,7 @@ import (
 	"os"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -405,7 +406,9 @@ func (m pagerModel) updateEditing(msg tea.Msg) (pagerModel, tea.Cmd) {
 			m.lastEdit = time.Time{}
 			m.joinPrevious()
 		default:
-			m.editor, cmd = m.editor.Update(msg)
+			if msg.String() != keyEnter || !m.continueList() {
+				m.editor, cmd = m.editor.Update(msg)
+			}
 			if m.doc() != before.doc {
 				if time.Since(m.lastEdit) > undoGroupGap {
 					m.undo = append(m.undo, before)
@@ -596,7 +599,37 @@ func (m *pagerModel) editWidth() int {
 var (
 	taskSource   = regexp.MustCompile(`^\s*(?:[-*+]|\d+[.)])\s+\[[ xX]\]`)
 	taskRendered = regexp.MustCompile(`^\s*\[[ ✓xX]\]`)
+	listItem     = regexp.MustCompile(`^(\s*)([-*+]|(\d+)([.)]))(\s+)(\[[ xX]\]\s+)?`)
 )
+
+// continueList handles enter on a list item: the new line starts with the
+// same bullet (next number, empty checkbox). Enter on an empty item ends the
+// list and leaves a blank line. It reports false when the line isn't a list item.
+func (m *pagerModel) continueList() bool {
+	line := string(m.editorLine())
+	mk := listItem.FindStringSubmatch(line)
+	if mk == nil || m.editor.Column() < utf8.RuneCountInString(mk[0]) {
+		return false
+	}
+	if strings.TrimSpace(line[len(mk[0]):]) == "" {
+		lines := strings.Split(m.editor.Value(), "\n")
+		// A blank line, so what you type next isn't part of the list.
+		lines[m.editor.Line()] = "\n"
+		m.setEditor(strings.Join(lines, "\n"), m.editor.Line()+1, 0)
+		return true
+	}
+	bullet := mk[2]
+	if mk[3] != "" {
+		n, _ := strconv.Atoi(mk[3])
+		bullet = strconv.Itoa(n+1) + mk[4]
+	}
+	next := mk[1] + bullet + mk[5]
+	if mk[6] != "" {
+		next += "[ ] "
+	}
+	m.editor.InsertString("\n" + next)
+	return true
+}
 
 const doubleClickGap = 400 * time.Millisecond
 

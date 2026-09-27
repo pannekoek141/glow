@@ -56,3 +56,28 @@ func TestSelectedText(t *testing.T) {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }
+
+func TestContinueList(t *testing.T) {
+	m := pagerModel{editor: textarea.New()}
+	m.editor.MaxHeight = 0
+	for _, tc := range []struct{ in, want string }{
+		{"- one", "- one\n- "},
+		{"  * [x] done", "  * [x] done\n  * [ ] "},
+		{"9. nine", "9. nine\n10. "},
+		{"- one\n- ", "- one\n\n"},
+		{"plain", ""},
+	} {
+		lines := strings.Split(tc.in, "\n")
+		last := lines[len(lines)-1]
+		m.setEditor(tc.in, len(lines)-1, len([]rune(last)))
+		if !m.continueList() {
+			if tc.want != "" {
+				t.Errorf("%q: not continued", tc.in)
+			}
+			continue
+		}
+		if got := m.editor.Value(); got != tc.want {
+			t.Errorf("%q: got %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
