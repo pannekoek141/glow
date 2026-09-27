@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/glamour/v2"
@@ -54,6 +55,23 @@ type pagerModel struct {
 	currentDocument markdown
 
 	watcher *fsnotify.Watcher
+
+	// Inline editing, see edit.go.
+	editing    bool
+	editOnLoad bool
+	editor     textarea.Model
+	editGen    int
+	savedBody  string
+	lines      []string
+	blocks     []span
+	cur        int
+	editTop    int
+	rendered   map[string][]string
+	renderer   *glamour.TermRenderer
+	tops       []int // screen line where each block starts, -1 if hidden
+	heights    []int
+	undo, redo []snapshot
+	lastEdit   time.Time
 }
 
 func newPagerModel(common *commonModel) pagerModel {
@@ -72,6 +90,11 @@ func newPagerModel(common *commonModel) pagerModel {
 func (m *pagerModel) setSize(w, h int) {
 	m.viewport.SetWidth(w)
 	m.viewport.SetHeight(h - statusBarHeight)
+
+	if m.editing {
+		m.editor.SetWidth(m.editWidth())
+		return
+	}
 
 	if m.showHelp {
 		if pagerHelpHeight == 0 {
@@ -133,6 +156,10 @@ func (m pagerModel) update(msg tea.Msg) (pagerModel, tea.Cmd) {
 		cmds []tea.Cmd
 	)
 
+	if m.editing {
+		return m.updateEditing(msg)
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		switch msg.String() {
@@ -153,6 +180,9 @@ func (m pagerModel) update(msg tea.Msg) (pagerModel, tea.Cmd) {
 			m.viewport.HalfPageUp()
 
 		case "e":
+			return m, m.startEditingAtTop()
+
+		case "E":
 			lineno := int(math.RoundToEven(float64(m.viewport.TotalLineCount()) * m.viewport.ScrollPercent()))
 			if m.viewport.AtTop() {
 				lineno = 0
@@ -182,8 +212,17 @@ func (m pagerModel) update(msg tea.Msg) (pagerModel, tea.Cmd) {
 	case contentRenderedMsg:
 		log.Info("content rendered", "state", m.state)
 
-		m.setContent(string(msg))
+		if m.blockMode() {
+			m.showBlocks()
+		} else {
+			m.tops = nil
+			m.setContent(string(msg))
+		}
 		cmds = append(cmds, m.watchFile)
+		if m.editOnLoad {
+			m.editOnLoad = false
+			cmds = append(cmds, m.startEditingAtTop())
+		}
 
 	// The file was changed on disk and we're reloading it
 	case reloadMsg:
@@ -261,6 +300,9 @@ func (m pagerModel) statusBarView(b *strings.Builder) {
 	} else {
 		note = m.currentDocument.Note
 	}
+	if m.editing && !showStatusMessage {
+		note = "✎ " + note + " · autosaves · esc done"
+	}
 	note = truncate.StringWithTail(" "+note+" ", uint(max(0, //nolint:gosec
 		m.common.width-
 			ansi.PrintableRuneWidth(logo)-
@@ -302,7 +344,8 @@ func (m pagerModel) helpView() (s string) {
 		"g/home  go to top",
 		"G/end   go to bottom",
 		"c       copy contents",
-		"e       edit this document",
+		"e       edit here (autosaves)",
+		"E       edit in $EDITOR",
 		"r       reload this document",
 		"esc     back to files",
 		"q       quit",
@@ -359,20 +402,7 @@ func glamourRender(m pagerModel, markdown string) (string, error) {
 	}
 
 	isCode := !utils.IsMarkdownFile(m.currentDocument.Note)
-	width := max(0, min(int(m.common.cfg.GlamourMaxWidth), m.viewport.Width())) //nolint:gosec
-	if isCode {
-		width = 0
-	}
-
-	options := []glamour.TermRendererOption{
-		utils.GlamourStyle(m.common.cfg.GlamourStyle, isCode),
-		glamour.WithWordWrap(width),
-	}
-
-	if m.common.cfg.PreserveNewLines {
-		options = append(options, glamour.WithPreservedNewLines())
-	}
-	r, err := glamour.NewTermRenderer(options...)
+	r, err := glamour.NewTermRenderer(glamourOptions(m, isCode)...)
 	if err != nil {
 		return "", fmt.Errorf("error creating glamour renderer: %w", err)
 	}
@@ -411,6 +441,32 @@ func glamourRender(m pagerModel, markdown string) (string, error) {
 	}
 
 	return content.String(), nil
+}
+
+func glamourOptions(m pagerModel, isCode bool) []glamour.TermRendererOption {
+	width := max(0, min(int(m.common.cfg.GlamourMaxWidth), m.viewport.Width())) //nolint:gosec
+	if isCode {
+		width = 0
+	}
+
+	// Follow the terminal's light/dark mode live instead of assuming dark.
+	style := m.common.cfg.GlamourStyle
+	if style == "auto" {
+		style = "light"
+		if m.common.isDark {
+			style = "dark"
+		}
+	}
+
+	options := []glamour.TermRendererOption{
+		utils.GlamourStyle(style, isCode),
+		glamour.WithWordWrap(width),
+	}
+
+	if m.common.cfg.PreserveNewLines {
+		options = append(options, glamour.WithPreservedNewLines())
+	}
+	return options
 }
 
 func (m *pagerModel) initWatcher() {

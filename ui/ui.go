@@ -11,6 +11,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/glow/v3/utils"
 	"github.com/charmbracelet/log"
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/gitcha"
 )
 
@@ -34,6 +36,11 @@ func NewProgram(cfg Config, content string) (*tea.Program, func()) {
 
 	m := newModel(cfg, content)
 
+	// Ask the terminal to tell us when it switches between light and dark
+	// (mode 2031), plus the current mode right away.
+	fmt.Fprint(os.Stdout, ansi.SetModeLightDark+"\x1b[?996n")
+	resetTheme := func() { fmt.Fprint(os.Stdout, ansi.ResetModeLightDark) }
+
 	if utils.TextSizingEnabled() {
 		if tty, state, err := openRawTerminal(); err == nil {
 			painter := newRawPainter(os.Stdout, tty, state, cfg.EnableMouse)
@@ -43,11 +50,11 @@ func NewProgram(cfg Config, content string) (*tea.Program, func()) {
 				tea.WithInput(tty),
 			)
 			painter.watchResize(prog)
-			return prog, painter.stop
+			return prog, func() { painter.stop(); resetTheme() }
 		}
 	}
 
-	return tea.NewProgram(m), func() {}
+	return tea.NewProgram(m), resetTheme
 }
 
 type errMsg struct{ err error }
@@ -97,6 +104,7 @@ type commonModel struct {
 	cwd    string
 	width  int
 	height int
+	isDark bool
 	styles Styles
 }
 
@@ -129,9 +137,26 @@ func (m *model) unloadDocument() []tea.Cmd {
 	return batch
 }
 
+// setDark switches all colors between light and dark.
+func (m *model) setDark(isDark bool) tea.Cmd {
+	m.common.isDark = isDark
+	m.common.styles = newStyles(isDark)
+	m.stash.stylePaginators(m.common.styles)
+	fs := m.stash.filterInput.Styles()
+	fs.Focused.Prompt = m.common.styles.stashInputPromptStyle
+	fs.Blurred.Prompt = m.common.styles.stashInputPromptStyle
+	fs.Cursor.Color = m.common.styles.fuchsia
+	m.stash.filterInput.SetStyles(fs)
+	if m.state != stateShowDocument {
+		return nil
+	}
+	return m.pager.themeChanged()
+}
+
 func newModel(cfg Config, content string) tea.Model {
 	common := commonModel{
 		cfg:    cfg,
+		isDark: true,
 		styles: newStyles(true),
 	}
 
@@ -174,7 +199,7 @@ func newModel(cfg Config, content string) tea.Model {
 			m.fatalErr = err
 			return m
 		}
-		m.pager.currentDocument.Body = string(utils.RemoveFrontmatter(content))
+		m.pager.currentDocument.Body = string(content)
 	}
 
 	return m
@@ -187,7 +212,7 @@ func (m model) Init() tea.Cmd {
 	case stateShowStash:
 		cmds = append(cmds, findLocalFiles(*m.common))
 	case stateShowDocument:
-		cmds = append(cmds, renderWithGlamour(m.pager, m.pager.currentDocument.Body))
+		cmds = append(cmds, renderWithGlamour(m.pager, string(utils.RemoveFrontmatter([]byte(m.pager.currentDocument.Body)))))
 	}
 
 	return tea.Batch(cmds...)
@@ -205,9 +230,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.BackgroundColorMsg:
-		m.common.styles = newStyles(msg.IsDark())
-		m.stash.stylePaginators(m.common.styles)
+		cmds = append(cmds, m.setDark(msg.IsDark()))
+	case uv.DarkColorSchemeEvent:
+		return m, m.setDark(true)
+	case uv.LightColorSchemeEvent:
+		return m, m.setDark(false)
 	case tea.KeyPressMsg:
+		if m.state == stateShowDocument && m.pager.editing {
+			if msg.String() == "ctrl+c" {
+				_ = m.pager.save()
+				return m, tea.Quit
+			}
+			break // all other keys go to the editor
+		}
 		switch msg.String() {
 		case "esc":
 			if m.state == stateShowDocument || m.stash.viewState == stashStateLoadingDocument {
@@ -218,7 +253,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			if m.state == stateShowStash {
 				// pass through all keys if we're editing the filter
-				if m.stash.filterState == filtering {
+				if m.stash.filterState == filtering || m.stash.naming {
 					m.stash, cmd = m.stash.update(msg)
 					return m, cmd
 				}
@@ -232,7 +267,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch m.state { //nolint:exhaustive
 			case stateShowStash:
 				// pass through all keys if we're editing the filter
-				if m.stash.filterState == filtering {
+				if m.stash.filterState == filtering || m.stash.naming {
 					m.stash, cmd = m.stash.update(msg)
 					return m, cmd
 				}
@@ -271,6 +306,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pager.currentDocument = *msg
 		body := string(utils.RemoveFrontmatter([]byte(msg.Body)))
 		cmds = append(cmds, renderWithGlamour(m.pager, body))
+
+	case openForEditMsg:
+		m.pager.editOnLoad = true
+		cmds = append(cmds, m.stash.openMarkdown(msg))
 
 	case contentRenderedMsg:
 		m.state = stateShowDocument

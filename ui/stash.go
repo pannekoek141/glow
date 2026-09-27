@@ -68,11 +68,11 @@ func newSections() map[sectionKey]section {
 	return map[sectionKey]section{
 		documentsSection: {
 			key:       documentsSection,
-			paginator: paginator.Model{Type: paginator.Dots},
+			paginator: paginator.Model{Type: paginator.Dots, KeyMap: paginator.DefaultKeyMap()},
 		},
 		filterSection: {
 			key:       filterSection,
-			paginator: paginator.Model{Type: paginator.Dots},
+			paginator: paginator.Model{Type: paginator.Dots, KeyMap: paginator.DefaultKeyMap()},
 		},
 	}
 }
@@ -129,6 +129,8 @@ type stashModel struct {
 	err                error
 	spinner            spinner.Model
 	filterInput        textinput.Model
+	nameInput          textinput.Model // new file name, see newfile.go
+	naming             bool
 	viewState          stashViewState
 	filterState        filterState
 	showFullHelp       bool
@@ -432,6 +434,11 @@ func (m stashModel) update(msg tea.Msg) (stashModel, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 	}
 
+	if m.naming {
+		cmds = append(cmds, m.handleNaming(msg))
+		return m, tea.Batch(cmds...)
+	}
+
 	// Updates per the current state
 	switch m.viewState { //nolint:exhaustive
 	case stashStateReady:
@@ -504,6 +511,14 @@ func (m *stashModel) handleDocumentBrowsing(msg tea.Msg) tea.Cmd {
 			m.loaded = false
 			return findLocalFiles(*m.common)
 
+		// New document
+		case "n":
+			return m.startNaming()
+
+		// Move document to the Trash
+		case "backspace", "delete":
+			return m.trashSelected()
+
 		// Edit document in EDITOR
 		case "e":
 			md := m.selectedMarkdown()
@@ -513,7 +528,7 @@ func (m *stashModel) handleDocumentBrowsing(msg tea.Msg) tea.Cmd {
 				return nil
 			}
 
-			return openEditor(md.localPath, 0)
+			return func() tea.Msg { return openForEditMsg(md) }
 
 		// Open document
 		case keyEnter:
@@ -679,6 +694,8 @@ func (m stashModel) view() string {
 			logoOrFilter += m.statusMessage.String(m.common.styles)
 		} else if m.filterState == filtering {
 			logoOrFilter += m.filterInput.View()
+		} else if m.naming {
+			logoOrFilter += m.nameInput.View()
 		} else {
 			logoOrFilter += glowLogoView(m.common.styles)
 			if m.showStatusMessage {
