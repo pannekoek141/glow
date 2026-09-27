@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/sahilm/fuzzy"
 )
 
@@ -152,6 +153,21 @@ func (m *pagerModel) slashView() []string {
 	}
 	rows = append(rows, s.subtleStyle.Render(" ↑↓ pick • enter insert • esc"))
 	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(s.fuchsia).
-		MarginLeft(promptWidth).Render(strings.Join(rows, "\n"))
+		MarginRight(1).Render(strings.Join(rows, "\n"))
 	return strings.Split(box, "\n")
+}
+
+// overlay paints box over lines, top-left at line y, column x, like a popup.
+// Lines are added at the end if the box runs past them.
+func overlay(lines, box []string, y, x int) []string {
+	for len(lines) < y+len(box) {
+		lines = append(lines, "")
+	}
+	for i, b := range box {
+		l := lines[y+i]
+		left := ansi.Cut(l, 0, x)
+		left += strings.Repeat(" ", x-ansi.StringWidth(left))
+		lines[y+i] = left + "\x1b[m" + b + "\x1b[m" + ansi.Cut(l, x+ansi.StringWidth(b), ansi.StringWidth(l))
+	}
+	return lines
 }

@@ -468,6 +468,21 @@ func (m *stashModel) handleDocumentBrowsing(msg tea.Msg) tea.Cmd {
 			m.moveCursorDown()
 		}
 
+	// Click a file to select it, click it again (or double-click) to open it.
+	case tea.MouseClickMsg:
+		row := msg.Y - stashViewTopPadding
+		i := row / stashViewItemHeight
+		if msg.Button != tea.MouseLeft || row < 0 || row%stashViewItemHeight == 2 ||
+			i >= m.paginator().ItemsOnPage(numDocs) {
+			break
+		}
+		if i != m.cursor() {
+			m.setCursor(i)
+			break
+		}
+		m.hideStatusMessage()
+		cmds = append(cmds, m.openMarkdown(m.selectedMarkdown()))
+
 	// Handle keys
 	case tea.KeyPressMsg:
 		switch msg.String() {

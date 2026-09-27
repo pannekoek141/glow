@@ -514,6 +514,7 @@ func (m *pagerModel) layout(follow bool) {
 	out := []string{""}
 	m.tops = make([]int, len(m.blocks))
 	m.heights = make([]int, len(m.blocks))
+	menuAt := -1
 	for i := range m.blocks {
 		m.tops[i] = -1
 		if !m.editing && m.isFrontmatter(i) {
@@ -525,16 +526,17 @@ func (m *pagerModel) layout(follow bool) {
 		m.tops[i] = len(out)
 		if m.editing && i == m.cur {
 			m.editTop = len(out)
-			ed := strings.Split(m.editor.View(), "\n")
 			if m.slash.open {
-				r := min(m.cursorRow()+1, len(ed))
-				ed = slices.Concat(ed[:r], m.slashView(), ed[r:])
+				menuAt = len(out) + m.cursorRow() + 1
 			}
-			out = append(out, ed...)
+			out = append(out, strings.Split(m.editor.View(), "\n")...)
 		} else {
 			out = append(out, m.renderBlock(i)...)
 		}
 		m.heights[i] = len(out) - m.tops[i]
+	}
+	if menuAt >= 0 {
+		out = overlay(out, m.slashView(), menuAt, promptWidth)
 	}
 	m.viewport.SetContent(strings.Join(out, "\n"))
 	if !follow || !m.editing {
