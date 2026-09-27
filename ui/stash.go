@@ -68,11 +68,11 @@ func newSections() map[sectionKey]section {
 	return map[sectionKey]section{
 		documentsSection: {
 			key:       documentsSection,
-			paginator: paginator.Model{Type: paginator.Dots},
+			paginator: paginator.Model{Type: paginator.Dots, KeyMap: paginator.DefaultKeyMap()},
 		},
 		filterSection: {
 			key:       filterSection,
-			paginator: paginator.Model{Type: paginator.Dots},
+			paginator: paginator.Model{Type: paginator.Dots, KeyMap: paginator.DefaultKeyMap()},
 		},
 	}
 }
