@@ -72,6 +72,9 @@ type pagerModel struct {
 	heights    []int
 	undo, redo []snapshot
 	lastEdit   time.Time
+	slash      slashMenu
+	lastClick  time.Time
+	lastClickY int
 }
 
 func newPagerModel(common *commonModel) pagerModel {
@@ -238,6 +241,11 @@ func (m pagerModel) update(msg tea.Msg) (pagerModel, tea.Cmd) {
 	// after a resize
 	case tea.WindowSizeMsg:
 		return m, renderWithGlamour(m, m.currentDocument.Body)
+
+	case tea.MouseClickMsg:
+		if msg.Button == tea.MouseLeft && msg.Y < m.viewport.Height() {
+			return m, m.clickView(msg.X, msg.Y)
+		}
 
 	case statusMessageTimeoutMsg:
 		m.state = pagerStateBrowse

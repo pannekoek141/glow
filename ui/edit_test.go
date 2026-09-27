@@ -2,8 +2,11 @@ package ui
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
+
+	"charm.land/bubbles/v2/textarea"
 )
 
 func TestFindBlocks(t *testing.T) {
@@ -15,5 +18,31 @@ func TestFindBlocks(t *testing.T) {
 	}
 	if got := findBlocks([]string{""}); !reflect.DeepEqual(got, []span{{0, 0}}) {
 		t.Fatalf("empty doc: got %v", got)
+	}
+}
+
+func TestApplySlash(t *testing.T) {
+	m := pagerModel{editor: textarea.New()}
+	for _, tc := range []struct{ line, pick, want string }{
+		{"/bo", "Bold", "**x**"},
+		{"hi /h1", "Heading 1", "hi \n# x"},
+		{"/co", "Code block", "```\nx\n```"},
+	} {
+		m.setEditor(tc.line, 0, len(tc.line))
+		m.slash = slashMenu{open: true, col: strings.Index(tc.line, "/")}
+		i := slices.IndexFunc(slashItems, func(it slashItem) bool { return it.name == tc.pick })
+		m.applySlash(slashItems[i])
+		m.editor.InsertString("x")
+		if got := m.editor.Value(); got != tc.want {
+			t.Errorf("%q: got %q, want %q", tc.line, got, tc.want)
+		}
+	}
+}
+
+func TestBoxTables(t *testing.T) {
+	in := []string{"   A │ B ", "  ───┼───", "   1 │ 2 ", "", "  text"}
+	want := []string{" ┌───┬──┐", " │ A │ B│", " ├───┼──┤", " │ 1 │ 2│", " └───┴──┘", "", "  text"}
+	if got := boxTables(in); !reflect.DeepEqual(got, want) {
+		t.Fatalf("got\n%s", strings.Join(got, "\n"))
 	}
 }

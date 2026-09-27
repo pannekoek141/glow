@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -163,6 +164,7 @@ func (m *pagerModel) startEditing(i, row, x, screenTop int) tea.Cmd {
 	m.editor = ta
 	m.editing = true
 	m.undo, m.redo = nil, nil
+	m.slash = slashMenu{}
 	m.savedBody = body
 	m.lines = strings.Split(body, "\n")
 	m.blocks = findBlocks(m.lines)
@@ -245,11 +247,16 @@ func (m *pagerModel) commit() (start, end int) {
 func (m *pagerModel) activate(i, row, col int) {
 	b := m.blocks[i]
 	m.cur = i
-	m.editor.SetValue(m.blockText(b))
-	m.editor.MoveToBegin()
 	if row < 0 {
 		row = b.end - b.start - 1
 	}
+	m.setEditor(m.blockText(b), row, col)
+}
+
+// setEditor fills the editor with val and puts the cursor on row, col.
+func (m *pagerModel) setEditor(val string, row, col int) {
+	m.editor.SetValue(val)
+	m.editor.MoveToBegin()
 	for n := 0; m.editor.Line() < row && n < maxEditLines; n++ {
 		m.editor.CursorDown()
 	}
@@ -330,6 +337,13 @@ func (m *pagerModel) undoRedo(from, to *[]snapshot) {
 // clickEdit moves the cursor to where the mouse clicked while editing.
 func (m *pagerModel) clickEdit(x, y int) {
 	i, row := m.hit(y + m.viewport.YOffset())
+	if l, ok := m.taskAt(i, row, x); ok {
+		m.undo, m.redo = append(m.undo, m.snap()), nil
+		m.lastEdit = time.Time{}
+		m.toggleTask(l)
+		m.layout(false)
+		return
+	}
 	screenTop := m.tops[i] - m.viewport.YOffset()
 	if i != m.cur {
 		target := m.blocks[i].start
@@ -364,6 +378,11 @@ func (m pagerModel) updateEditing(msg tea.Msg) (pagerModel, tea.Cmd) {
 		shift := msg.Mod&tea.ModShift != 0 || msg.Code == 'Z'
 		before := m.snap()
 
+		if m.slash.open && m.slashKey(msg) {
+			m.layout(true)
+			return m, m.scheduleSave()
+		}
+
 		var cmd tea.Cmd
 		switch {
 		case isZ && mod && !shift:
@@ -394,11 +413,16 @@ func (m pagerModel) updateEditing(msg tea.Msg) (pagerModel, tea.Cmd) {
 				m.redo = nil
 			}
 		}
+		m.checkSlash(msg)
 		m.layout(true)
 		return m, tea.Batch(cmd, m.scheduleSave())
 
 	case tea.MouseClickMsg:
 		if msg.Button == tea.MouseLeft && msg.Y < m.viewport.Height() {
+			if m.slash.open {
+				m.slash.open = false
+				m.layout(false)
+			}
 			m.clickEdit(msg.X, msg.Y)
 			return m, m.scheduleSave()
 		}
@@ -467,7 +491,7 @@ func (m *pagerModel) renderBlock(i int) []string {
 			}
 		}
 	}
-	lines := strings.Split(out, "\n")
+	lines := boxTables(strings.Split(out, "\n"))
 	blank := func(l string) bool { return strings.TrimSpace(ansi.Strip(l)) == "" }
 	for len(lines) > 0 && blank(lines[0]) {
 		lines = lines[1:]
@@ -500,7 +524,12 @@ func (m *pagerModel) layout(follow bool) {
 		m.tops[i] = len(out)
 		if m.editing && i == m.cur {
 			m.editTop = len(out)
-			out = append(out, strings.Split(m.editor.View(), "\n")...)
+			ed := strings.Split(m.editor.View(), "\n")
+			if m.slash.open {
+				r := min(m.cursorRow()+1, len(ed))
+				ed = slices.Concat(ed[:r], m.slashView(), ed[r:])
+			}
+			out = append(out, ed...)
 		} else {
 			out = append(out, m.renderBlock(i)...)
 		}
@@ -511,18 +540,26 @@ func (m *pagerModel) layout(follow bool) {
 		return
 	}
 
-	row := 0
+	y, h := m.editTop+m.cursorRow(), m.viewport.Height()
+	bottom := y
+	if m.slash.open {
+		bottom += len(m.slashView())
+	}
+	if y < m.viewport.YOffset() {
+		m.viewport.SetYOffset(y)
+	} else if bottom >= m.viewport.YOffset()+h {
+		m.viewport.SetYOffset(bottom - h + 1)
+	}
+}
+
+// cursorRow is the cursor's visual row inside the editor.
+func (m *pagerModel) cursorRow() int {
 	c := m.editor
 	c.SetVirtualCursor(false)
 	if cur := c.Cursor(); cur != nil {
-		row = cur.Y
+		return cur.Y
 	}
-	y, h := m.editTop+row, m.viewport.Height()
-	if y < m.viewport.YOffset() {
-		m.viewport.SetYOffset(y)
-	} else if y >= m.viewport.YOffset()+h {
-		m.viewport.SetYOffset(y - h + 1)
-	}
+	return 0
 }
 
 // hit finds the block at content line y and the row within it. Clicks in the
@@ -551,4 +588,85 @@ func (m *pagerModel) editWidth() int {
 		w = min(w, mw)
 	}
 	return w
+}
+
+var (
+	taskSource   = regexp.MustCompile(`^\s*(?:[-*+]|\d+[.)])\s+\[[ xX]\]`)
+	taskRendered = regexp.MustCompile(`^\s*\[[ ✓xX]\]`)
+)
+
+const doubleClickGap = 400 * time.Millisecond
+
+// taskAt finds the to-do line whose rendered checkbox is at row, x of block i.
+// Glamour draws each task's box at the start of its first row, so the k-th
+// box row is the k-th task line in the source.
+func (m *pagerModel) taskAt(i, row, x int) (int, bool) {
+	if m.editing && i == m.cur {
+		return 0, false // raw text; the click places the cursor instead
+	}
+	rows := m.renderBlock(i)
+	if row >= len(rows) {
+		return 0, false
+	}
+	plain := ansi.Strip(rows[row])
+	loc := taskRendered.FindStringIndex(plain)
+	if loc == nil {
+		return 0, false
+	}
+	box := ansi.StringWidth(plain[:loc[1]]) - 3
+	if x < box || x > box+3 {
+		return 0, false
+	}
+	k := 0
+	for _, r := range rows[:row] {
+		if taskRendered.MatchString(ansi.Strip(r)) {
+			k++
+		}
+	}
+	b := m.blocks[i]
+	for l := b.start; l < b.end; l++ {
+		if taskSource.MatchString(m.lines[l]) {
+			if k == 0 {
+				return l, true
+			}
+			k--
+		}
+	}
+	return 0, false
+}
+
+// toggleTask flips [ ] and [x] on line l.
+func (m *pagerModel) toggleTask(l int) {
+	s := m.lines[l]
+	i := strings.Index(s, "[") + 1
+	mark := "x"
+	if s[i] != ' ' {
+		mark = " "
+	}
+	m.lines[l] = s[:i] + mark + s[i+1:]
+}
+
+// clickView handles a click while viewing: a checkbox toggles, a double
+// click starts editing right there.
+func (m *pagerModel) clickView(x, y int) tea.Cmd {
+	double := time.Since(m.lastClick) < doubleClickGap && y == m.lastClickY
+	m.lastClick, m.lastClickY = time.Now(), y
+	if len(m.tops) == 0 {
+		return nil
+	}
+	i, row := m.hit(y + m.viewport.YOffset())
+	if l, ok := m.taskAt(i, row, x); ok {
+		m.toggleTask(l)
+		body := strings.Join(m.lines, "\n")
+		if err := os.WriteFile(m.currentDocument.localPath, []byte(body), 0o644); err != nil { //nolint:gosec
+			return m.showStatusMessage(pagerStatusMessage{"Save failed: " + err.Error(), true})
+		}
+		m.currentDocument.Body = body
+		m.layout(false)
+		return nil
+	}
+	if double {
+		return m.startEditing(i, row, x, m.tops[i]-m.viewport.YOffset())
+	}
+	return nil
 }

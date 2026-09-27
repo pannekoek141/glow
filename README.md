@@ -2,6 +2,15 @@
 
 Render markdown on the CLI, with _pizzazz_!
 
+> [!NOTE]
+> This is a fork of [Glow](https://github.com/charmbracelet/glow) by
+> [Charm](https://charm.sh). It adds inline markdown editing, built with
+> [Claude Code](https://claude.com/claude-code). All the credit for Glow
+> itself goes to Charm. See [Editing (this fork)](#editing-this-fork).
+>
+> To install this fork, build it from source:
+> `git clone -b inline-editing https://github.com/pannekoek141/glow && cd glow && go build`
+
 <p align="center">
     <img src="https://stuff.charm.sh/glow/glow-banner-github.gif" alt="Glow Logo">
     <a href="https://github.com/charmbracelet/glow/releases"><img src="https://img.shields.io/github/release/charmbracelet/glow.svg" alt="Latest Release"></a>
@@ -130,6 +139,31 @@ the repo.
 Markdown files can be read with Glow's high-performance pager. Most of the
 keystrokes you know from `less` are the same, but you can press `?` to list
 the hotkeys.
+
+### Editing (this fork)
+
+This fork adds Obsidian-style inline editing to the TUI.
+
+- Press `e` in the pager or on the file list to edit. Every block stays
+  rendered except the one under the cursor, which shows raw markdown.
+  Changes autosave. Press `esc` to stop editing, or `E` to open `$EDITOR`.
+- Double-click text to start editing right there. While editing, a click
+  moves the cursor.
+- Type `/` at the start of a line (or after a space) for a menu of markdown
+  elements: headings, lists, to-dos, quotes, code blocks, tables, dividers,
+  bold, italic, links and more.
+- Click a to-do's `[ ]` to check or uncheck it.
+- Undo and redo with `cmd+z` / `cmd+shift+z` (or `ctrl+z` / `ctrl+y`).
+  In Ghostty, add `keybind = super+z=unbind` and
+  `keybind = super+shift+z=unbind` to your config so the keys reach Glow.
+- Arrow keys at a block's edge move to the next block. Backspace at the start
+  of a block joins it with the one above.
+
+On the file list, press `n` for a new file (folders are created for you) and
+`backspace` to move the selected file to the Trash.
+
+Also new: tables get a full box border, and `style: auto` follows the
+terminal's light/dark mode live.
 
 ## The CLI
 
