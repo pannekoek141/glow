@@ -153,6 +153,8 @@ This fork adds Obsidian-style inline editing to the TUI.
   elements: headings, lists, to-dos, quotes, code blocks, tables, dividers,
   bold, italic, links and more.
 - Click a to-do's `[ ]` to check or uncheck it.
+- While viewing, drag with the mouse to select text. It's copied to the
+  clipboard when you let go.
 - Undo and redo with `cmd+z` / `cmd+shift+z` (or `ctrl+z` / `ctrl+y`).
   In Ghostty, add `keybind = super+z=unbind` and
   `keybind = super+shift+z=unbind` to your config so the keys reach Glow.

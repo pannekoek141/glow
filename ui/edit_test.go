@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/viewport"
 )
 
 func TestFindBlocks(t *testing.T) {
@@ -44,5 +45,14 @@ func TestBoxTables(t *testing.T) {
 	want := []string{" ┌───┬──┐", " │ A │ B│", " ├───┼──┤", " │ 1 │ 2│", " └───┴──┘", "", "  text"}
 	if got := boxTables(in); !reflect.DeepEqual(got, want) {
 		t.Fatalf("got\n%s", strings.Join(got, "\n"))
+	}
+}
+
+func TestSelectedText(t *testing.T) {
+	m := pagerModel{viewport: viewport.New()}
+	m.viewport.SetContent("  First line   \n\n  Second\n    nested")
+	m.sel = selection{from: point{0, 4}, to: point{3, 7}}
+	if got, want := m.selectedText(), "rst line\n\nSecond\n  nest"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
 	}
 }

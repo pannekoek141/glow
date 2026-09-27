@@ -165,6 +165,7 @@ func (m *pagerModel) startEditing(i, row, x, screenTop int) tea.Cmd {
 	m.editing = true
 	m.undo, m.redo = nil, nil
 	m.slash = slashMenu{}
+	m.sel = selection{}
 	m.savedBody = body
 	m.lines = strings.Split(body, "\n")
 	m.blocks = findBlocks(m.lines)

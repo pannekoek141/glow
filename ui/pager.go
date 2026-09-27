@@ -75,6 +75,7 @@ type pagerModel struct {
 	slash      slashMenu
 	lastClick  time.Time
 	lastClickY int
+	sel        selection
 }
 
 func newPagerModel(common *commonModel) pagerModel {
@@ -165,6 +166,7 @@ func (m pagerModel) update(msg tea.Msg) (pagerModel, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
+		m.sel = selection{}
 		switch msg.String() {
 		case "q", keyEsc:
 			if m.state != pagerStateBrowse {
@@ -244,8 +246,12 @@ func (m pagerModel) update(msg tea.Msg) (pagerModel, tea.Cmd) {
 
 	case tea.MouseClickMsg:
 		if msg.Button == tea.MouseLeft && msg.Y < m.viewport.Height() {
+			m.selectMouse(msg)
 			return m, m.clickView(msg.X, msg.Y)
 		}
+
+	case tea.MouseMotionMsg, tea.MouseReleaseMsg:
+		return m, m.selectMouse(msg.(tea.MouseMsg))
 
 	case statusMessageTimeoutMsg:
 		m.state = pagerStateBrowse
@@ -259,7 +265,7 @@ func (m pagerModel) update(msg tea.Msg) (pagerModel, tea.Cmd) {
 
 func (m pagerModel) View() string {
 	var b strings.Builder
-	fmt.Fprint(&b, m.viewport.View()+"\n")
+	fmt.Fprint(&b, m.highlight(m.viewport.View())+"\n")
 
 	// Footer
 	m.statusBarView(&b)
