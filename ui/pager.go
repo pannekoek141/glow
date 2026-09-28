@@ -5,6 +5,7 @@ import (
 	"math"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"charm.land/bubbles/v2/textarea"
@@ -56,6 +57,9 @@ type pagerModel struct {
 	currentDocument markdown
 
 	watcher *fsnotify.Watcher
+	// The file watchFile reports on. Shared by every copy of the model, so a
+	// rename reaches the goroutine that's already watching.
+	watched *atomic.Pointer[string]
 
 	// Inline editing, see edit.go.
 	editing    bool
@@ -501,6 +505,7 @@ func glamourOptions(m pagerModel, isCode bool) []glamour.TermRendererOption {
 
 func (m *pagerModel) initWatcher() {
 	var err error
+	m.watched = &atomic.Pointer[string]{}
 	m.watcher, err = fsnotify.NewWatcher()
 	if err != nil {
 		log.Error("error creating fsnotify watcher", "error", err)
@@ -509,6 +514,8 @@ func (m *pagerModel) initWatcher() {
 
 func (m *pagerModel) watchFile() tea.Msg {
 	dir := m.localDir()
+	path := m.currentDocument.localPath
+	m.watched.Store(&path)
 
 	if err := m.watcher.Add(dir); err != nil {
 		log.Error("error adding dir to fsnotify watcher", "error", err)
@@ -520,7 +527,7 @@ func (m *pagerModel) watchFile() tea.Msg {
 	for {
 		select {
 		case event, ok := <-m.watcher.Events:
-			if !ok || event.Name != m.currentDocument.localPath {
+			if !ok || event.Name != *m.watched.Load() {
 				continue
 			}
 

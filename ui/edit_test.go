@@ -7,9 +7,11 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
 )
 
 func TestFindBlocks(t *testing.T) {
@@ -117,5 +119,34 @@ func TestCursorToTextStart(t *testing.T) {
 	m.cursorToTextStart()
 	if c := m.editor.Column(); c != 2 {
 		t.Errorf("column %d, want 2", c)
+	}
+}
+
+func TestWatcherFollowsRename(t *testing.T) {
+	dir, _ := filepath.EvalSymlinks(t.TempDir())
+	from := filepath.Join(dir, "draft.md")
+	if err := os.WriteFile(from, []byte("hi"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := newPagerModel(&commonModel{cwd: dir})
+	m.currentDocument = markdown{localPath: from, Note: "draft.md"}
+
+	// The watcher runs on a copy of the model, as it does in the app.
+	got := make(chan tea.Msg, 1)
+	w := m
+	go func() { got <- w.watchFile() }()
+	time.Sleep(50 * time.Millisecond)
+
+	m.rename("notes/idea")
+	if err := os.WriteFile(m.currentDocument.localPath, []byte("changed"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case msg := <-got:
+		if _, ok := msg.(reloadMsg); !ok {
+			t.Fatalf("got %T, want reloadMsg", msg)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no reload after writing the renamed file")
 	}
 }

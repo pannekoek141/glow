@@ -137,6 +137,7 @@ type stashModel struct {
 	showStatusMessage  bool
 	statusMessage      statusMessage
 	statusMessageTimer *time.Timer
+	lastWheel          time.Time
 
 	// Available document sections we can cycle through. We use a slice, rather
 	// than a map, because order is important.
@@ -461,6 +462,9 @@ func (m *stashModel) handleDocumentBrowsing(msg tea.Msg) tea.Cmd {
 
 	switch msg := msg.(type) {
 	case tea.MouseWheelMsg:
+		if !newNotch(&m.lastWheel) {
+			break
+		}
 		switch msg.Button {
 		case tea.MouseWheelUp:
 			m.moveCursorUp()

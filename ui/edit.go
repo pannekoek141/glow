@@ -281,6 +281,18 @@ func (m *pagerModel) placeCursor(row, x int) {
 	m.editor.SetCursorColumn(m.editor.LineInfo().StartColumn + max(0, x-promptWidth))
 }
 
+// newNotch reports whether a wheel event starts a new notch, and records it.
+// ponytail: the terminal sends ~3 events per wheel notch in one burst; count
+// a burst as one step. Tune wheelBurst if a mouse still skips or fast spins
+// feel slow.
+func newNotch(last *time.Time) bool {
+	if time.Since(*last) < wheelBurst {
+		return false
+	}
+	*last = time.Now()
+	return true
+}
+
 // cursorToTextStart moves the cursor to the start of its visual row, past
 // any indent on a line's first row.
 func (m *pagerModel) cursorToTextStart() {
@@ -454,13 +466,9 @@ func (m pagerModel) updateEditing(msg tea.Msg) (pagerModel, tea.Cmd) {
 		// Option + wheel moves the cursor a line, like the arrow keys, and
 		// puts it at the start of the text.
 		if msg.Mod&tea.ModAlt != 0 {
-			// ponytail: the terminal sends ~3 events per wheel notch in one
-			// burst; count a burst as one line. Tune wheelBurst if a mouse
-			// still skips lines or fast spins feel slow.
-			if time.Since(m.lastWheel) < wheelBurst {
+			if !newNotch(&m.lastWheel) {
 				return m, nil
 			}
-			m.lastWheel = time.Now()
 			key := tea.KeyPressMsg{Code: tea.KeyDown}
 			switch msg.Button {
 			case tea.MouseWheelUp:

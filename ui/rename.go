@@ -9,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/glow/v3/utils"
+	"github.com/charmbracelet/log"
 )
 
 // Rename the open file: double-click its name in the status bar, edit it,
@@ -89,8 +90,7 @@ func (m *pagerModel) rename(name string) tea.Cmd {
 	if err := os.Rename(from, to); err != nil {
 		return fail(err)
 	}
-	// ponytail: the file watcher still looks for the old path, so live reload
-	// of external changes resumes only after reopening the file.
+	m.follow(from, to)
 	m.currentDocument.localPath = to
 	m.currentDocument.Note = stripAbsolutePath(to, root)
 	note := m.currentDocument.Note
@@ -103,4 +103,18 @@ func (m *pagerModel) rename(name string) tea.Cmd {
 func sameFile(fi os.FileInfo, path string) bool {
 	other, err := os.Stat(path)
 	return err == nil && os.SameFile(fi, other)
+}
+
+// follow points the file watcher at the renamed file.
+func (m *pagerModel) follow(from, to string) {
+	if m.watcher == nil {
+		return
+	}
+	if dir := filepath.Dir(to); dir != filepath.Dir(from) {
+		_ = m.watcher.Remove(filepath.Dir(from))
+		if err := m.watcher.Add(dir); err != nil {
+			log.Error("error adding dir to fsnotify watcher", "error", err)
+		}
+	}
+	m.watched.Store(&to)
 }
