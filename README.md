@@ -167,7 +167,10 @@ This fork adds Obsidian-style inline editing to the TUI.
   of a block joins it with the one above.
 
 On the file list, scroll to move through files, click a file to select it
-and click it again (or double-click) to open it. Press `n` for a new file
+and click it again (or double-click) to open it. Middle or right click opens
+the selected file from anywhere, so you can scroll to it and click without
+aiming. While reading a file, right click goes back to the list. Press `n`
+for a new file
 (folders are created for you) and
 `backspace` to move the selected file to the Trash.
 

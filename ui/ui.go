@@ -289,6 +289,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 
+	// Right click while reading goes back to the file list.
+	case tea.MouseClickMsg:
+		if msg.Button == tea.MouseRight && m.state == stateShowDocument &&
+			!m.pager.editing && !m.pager.renaming {
+			return m, tea.Batch(m.unloadDocument()...)
+		}
+
 	// Window size is received when starting up and on every resize
 	case tea.WindowSizeMsg:
 		m.common.width = msg.Width

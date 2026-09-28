@@ -473,7 +473,13 @@ func (m *stashModel) handleDocumentBrowsing(msg tea.Msg) tea.Cmd {
 		}
 
 	// Click a file to select it, click it again (or double-click) to open it.
+	// Middle or right click opens the selected file, wherever you click.
 	case tea.MouseClickMsg:
+		if (msg.Button == tea.MouseMiddle || msg.Button == tea.MouseRight) && numDocs > 0 {
+			m.hideStatusMessage()
+			cmds = append(cmds, m.openMarkdown(m.selectedMarkdown()))
+			break
+		}
 		row := msg.Y - stashViewTopPadding
 		i := row / stashViewItemHeight
 		if msg.Button != tea.MouseLeft || row < 0 || row%stashViewItemHeight == 2 ||
