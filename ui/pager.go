@@ -385,16 +385,29 @@ func (m pagerModel) helpView() (s string) {
 		"q       quit",
 	}
 
+	// Mouse gestures, which are otherwise invisible.
+	col2 := []string{
+		"right click     back to files",
+		"double-click    edit here",
+		"⌥ + scroll      line by line (editing)",
+		"2× file name    rename (status bar)",
+		"",
+		"",
+	}
+	col0 := []string{
+		"k/↑      up                  ",
+		"j/↓      down                ",
+		"b/pgup   page up             ",
+		"f/pgdn   page down           ",
+		"u        ½ page up           ",
+		"d        ½ page down         ",
+	}
 	s += "\n"
-	s += "k/↑      up                  " + col1[0] + "\n"
-	s += "j/↓      down                " + col1[1] + "\n"
-	s += "b/pgup   page up             " + col1[2] + "\n"
-	s += "f/pgdn   page down           " + col1[3] + "\n"
-	s += "u        ½ page up           " + col1[4] + "\n"
-	s += "d        ½ page down         "
-
-	if len(col1) > 5 {
-		s += col1[5]
+	for i := range col0 {
+		if i > 0 {
+			s += "\n"
+		}
+		s += col0[i] + runewidth.FillRight(col1[i], 32) + col2[i]
 	}
 
 	s = indent(s, 2)
@@ -403,6 +416,7 @@ func (m pagerModel) helpView() (s string) {
 	if m.common.width > 0 {
 		lines := strings.Split(s, "\n")
 		for i := 0; i < len(lines); i++ {
+			lines[i] = runewidth.Truncate(lines[i], m.common.width, "")
 			l := runewidth.StringWidth(lines[i])
 			n := max(m.common.width-l, 0)
 			lines[i] += strings.Repeat(" ", n)

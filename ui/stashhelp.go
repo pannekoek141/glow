@@ -146,6 +146,7 @@ func (m stashModel) helpView() (string, int) {
 
 	// Detailed help
 	if m.showFullHelp {
+		selectionHelp = []string{"click", "select, again to open", "right click", "open selected"}
 		if m.filterState != filtering {
 			appHelp = append(appHelp, "?", "close help")
 		}
