@@ -160,6 +160,9 @@ This fork adds Obsidian-style inline editing to the TUI.
   `keybind = super+shift+z=unbind` to your config so the keys reach Glow.
 - Enter on a list item or to-do starts the next one; enter on an empty item
   ends the list.
+- Hold `option` and scroll to move the cursor line by line, like the arrow
+  keys. The cursor lands at the start of the line.
+- Double-click the file name in the status bar to rename the file.
 - Arrow keys at a block's edge move to the next block. Backspace at the start
   of a block joins it with the one above.
 

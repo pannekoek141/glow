@@ -33,6 +33,8 @@ const (
 	promptWidth  = 2 // "│ ", same as Glamour's left margin
 	// Typing without a pause this long is undone in one step.
 	undoGroupGap = time.Second
+	// Wheel events closer together than this are one notch.
+	wheelBurst = 10 * time.Millisecond
 )
 
 // snapshot is one undo step: the whole document plus where the cursor was.
@@ -279,6 +281,19 @@ func (m *pagerModel) placeCursor(row, x int) {
 	m.editor.SetCursorColumn(m.editor.LineInfo().StartColumn + max(0, x-promptWidth))
 }
 
+// cursorToTextStart moves the cursor to the start of its visual row, past
+// any indent on a line's first row.
+func (m *pagerModel) cursorToTextStart() {
+	col := m.editor.LineInfo().StartColumn
+	if col == 0 {
+		line := m.editorLine()
+		for col < len(line) && (line[col] == ' ' || line[col] == '\t') {
+			col++
+		}
+	}
+	m.editor.SetCursorColumn(col)
+}
+
 // move goes to the next (dir > 0) or previous block.
 func (m *pagerModel) move(dir, row, col int) {
 	start, end := m.commit()
@@ -430,9 +445,35 @@ func (m pagerModel) updateEditing(msg tea.Msg) (pagerModel, tea.Cmd) {
 			m.clickEdit(msg.X, msg.Y)
 			return m, m.scheduleSave()
 		}
+		if msg.Button == tea.MouseLeft && msg.Y == m.viewport.Height() {
+			return m, m.clickStatusBar()
+		}
 		return m, nil
 
 	case tea.MouseWheelMsg:
+		// Option + wheel moves the cursor a line, like the arrow keys, and
+		// puts it at the start of the text.
+		if msg.Mod&tea.ModAlt != 0 {
+			// ponytail: the terminal sends ~3 events per wheel notch in one
+			// burst; count a burst as one line. Tune wheelBurst if a mouse
+			// still skips lines or fast spins feel slow.
+			if time.Since(m.lastWheel) < wheelBurst {
+				return m, nil
+			}
+			m.lastWheel = time.Now()
+			key := tea.KeyPressMsg{Code: tea.KeyDown}
+			switch msg.Button {
+			case tea.MouseWheelUp:
+				key.Code = tea.KeyUp
+			case tea.MouseWheelDown:
+			default:
+				return m, nil
+			}
+			m, cmd := m.updateEditing(key)
+			m.cursorToTextStart()
+			m.layout(true)
+			return m, cmd
+		}
 		var cmd tea.Cmd
 		m.viewport, cmd = m.viewport.Update(msg)
 		return m, cmd

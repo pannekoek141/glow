@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -79,5 +81,41 @@ func TestContinueList(t *testing.T) {
 		if got := m.editor.Value(); got != tc.want {
 			t.Errorf("%q: got %q, want %q", tc.in, got, tc.want)
 		}
+	}
+}
+
+func TestRename(t *testing.T) {
+	dir := t.TempDir()
+	from := filepath.Join(dir, "draft.md")
+	if err := os.WriteFile(from, []byte("hi"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "taken.md"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := pagerModel{common: &commonModel{cwd: dir}}
+	m.currentDocument = markdown{localPath: from, Note: "draft.md"}
+
+	m.rename("taken")
+	if m.currentDocument.localPath != from {
+		t.Fatal("renamed over an existing file")
+	}
+	m.rename("notes/idea")
+	want := filepath.Join(dir, "notes", "idea.md")
+	if m.currentDocument.localPath != want || m.currentDocument.Note != filepath.Join("notes", "idea.md") {
+		t.Fatalf("got %q / %q", m.currentDocument.localPath, m.currentDocument.Note)
+	}
+	if b, err := os.ReadFile(want); err != nil || string(b) != "hi" {
+		t.Fatalf("file not moved: %v", err)
+	}
+}
+
+func TestCursorToTextStart(t *testing.T) {
+	m := pagerModel{editor: textarea.New()}
+	m.editor.MaxHeight = 0
+	m.setEditor("  - item", 0, 7)
+	m.cursorToTextStart()
+	if c := m.editor.Column(); c != 2 {
+		t.Errorf("column %d, want 2", c)
 	}
 }

@@ -236,7 +236,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case uv.LightColorSchemeEvent:
 		return m, m.setDark(false)
 	case tea.KeyPressMsg:
-		if m.state == stateShowDocument && m.pager.editing {
+		if m.state == stateShowDocument && (m.pager.editing || m.pager.renaming) {
 			if msg.String() == "ctrl+c" {
 				_ = m.pager.save()
 				return m, tea.Quit
@@ -306,6 +306,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pager.currentDocument = *msg
 		body := string(utils.RemoveFrontmatter([]byte(msg.Body)))
 		cmds = append(cmds, renderWithGlamour(m.pager, body))
+
+	case fileRenamedMsg:
+		for _, md := range m.stash.markdowns {
+			if md.localPath == msg.from {
+				md.localPath, md.Note = msg.to, msg.note
+				md.buildFilterValue()
+			}
+		}
 
 	case openForEditMsg:
 		m.pager.editOnLoad = true

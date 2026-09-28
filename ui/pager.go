@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/glamour/v2"
@@ -76,6 +77,9 @@ type pagerModel struct {
 	lastClick  time.Time
 	lastClickY int
 	sel        selection
+	renaming   bool
+	lastWheel  time.Time
+	nameInput  textinput.Model
 }
 
 func newPagerModel(common *commonModel) pagerModel {
@@ -159,6 +163,12 @@ func (m pagerModel) update(msg tea.Msg) (pagerModel, tea.Cmd) {
 		cmd  tea.Cmd
 		cmds []tea.Cmd
 	)
+
+	if m.renaming {
+		if cmd, ok := m.updateRenaming(msg); ok {
+			return m, cmd
+		}
+	}
 
 	if m.editing {
 		return m.updateEditing(msg)
@@ -249,6 +259,9 @@ func (m pagerModel) update(msg tea.Msg) (pagerModel, tea.Cmd) {
 			m.selectMouse(msg)
 			return m, m.clickView(msg.X, msg.Y)
 		}
+		if msg.Button == tea.MouseLeft && msg.Y == m.viewport.Height() {
+			return m, m.clickStatusBar()
+		}
 
 	case tea.MouseMotionMsg, tea.MouseReleaseMsg:
 		return m, m.selectMouse(msg.(tea.MouseMsg))
@@ -316,6 +329,9 @@ func (m pagerModel) statusBarView(b *strings.Builder) {
 	}
 	if m.editing && !showStatusMessage {
 		note = "✎ " + note + " · autosaves · esc done"
+	}
+	if m.renaming {
+		note = m.nameInput.View() + " · enter rename · esc cancel"
 	}
 	note = truncate.StringWithTail(" "+note+" ", uint(max(0, //nolint:gosec
 		m.common.width-
