@@ -587,6 +587,7 @@ func (m *pagerModel) layout(follow bool) {
 		}
 		m.heights[i] = len(out) - m.tops[i]
 	}
+	out = append(out, "", "", "", "", "") // room below the last line
 	if menuAt >= 0 {
 		out = overlay(out, m.slashView(), menuAt, promptWidth)
 	}
